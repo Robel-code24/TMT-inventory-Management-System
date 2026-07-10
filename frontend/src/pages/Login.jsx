@@ -46,8 +46,14 @@ export default function Login() {
       <div className="flex flex-1 items-center justify-center px-6 py-12 lg:px-0">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8 text-center">
+            <img
+              src="/profile.jpg"
+              alt="Profile"
+              className="h-20 w-20 rounded-full object-cover border-4 border-accent mx-auto mb-4"
+            />
             <h1 className="text-3xl font-bold text-navy">TMT InventoryPro</h1>
             <p className="mt-2 text-sm text-slate-500">Robel Hagos Mahray</p>
+            <p className="mt-1 text-xs text-slate-400">Computer Science Graduate, IUEA Uganda</p>
           </div>
           <h2 className="text-2xl font-bold text-navy">Sign in</h2>
           <p className="mt-2 text-sm text-slate-500">Click the button below to access the system</p>
