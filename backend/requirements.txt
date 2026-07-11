@@ -7,6 +7,7 @@ bcrypt>=4.0.1
 python-multipart>=0.0.9
 pydantic[email]>=2.10.0
 pydantic-settings>=2.5.2
+openai>=1.0.0
 
 # For PostgreSQL/Supabase production:
 # pip install psycopg2-binary

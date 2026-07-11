@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routers import activity, auth, categories, dashboard, products, reports, stock, suppliers, users
+from app.routers import activity, ai, auth, categories, dashboard, products, reports, stock, suppliers, users
 from app.seed import seed_database
 
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,7 @@ app.include_router(stock.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(activity.router)
+app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
 
 
 @app.on_event("startup")

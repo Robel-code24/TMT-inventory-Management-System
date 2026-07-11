@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
+import AIAssistant from "./AIAssistant";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: "📊" },
@@ -17,6 +18,7 @@ export default function Layout() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -60,6 +62,13 @@ export default function Layout() {
                 {item.label}
               </NavLink>
             ))}
+          <button
+            onClick={() => setAiOpen(true)}
+            className="flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 hover:bg-navy-light hover:text-white transition-colors"
+          >
+            <span>🤖</span>
+            AI Assistant
+          </button>
         </nav>
 
         <div className="border-t border-slate-700 px-4 py-4">
@@ -98,6 +107,9 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* AI Assistant */}
+      <AIAssistant isOpen={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   );
 }
