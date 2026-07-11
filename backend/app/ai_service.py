@@ -3,8 +3,9 @@ from openai import OpenAI
 from typing import List, Dict, Any
 from sqlalchemy import text
 from app.database import get_db
+from app.config import settings
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=settings.openai_api_key)
 
 SYSTEM_PROMPT = """You are an AI assistant for TMT InventoryPro, an inventory management system. 
 You help users with:
