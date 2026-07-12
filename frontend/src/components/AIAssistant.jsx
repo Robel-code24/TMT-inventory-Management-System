@@ -38,12 +38,17 @@ export default function AIAssistant({ isOpen, onClose }) {
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to get AI response");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("AI Error:", errorData);
+        throw new Error(errorData.detail || "Failed to get AI response");
+      }
 
       const data = await response.json();
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (error) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, I encountered an error. Please try again." }]);
+      console.error("Chat error:", error);
+      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${error.message}. Please try again.` }]);
     } finally {
       setIsLoading(false);
     }

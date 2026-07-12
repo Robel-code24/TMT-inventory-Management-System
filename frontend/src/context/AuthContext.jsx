@@ -32,9 +32,18 @@ export function AuthProvider({ children }) {
   };
 
   const loginDirect = async () => {
-    // Direct login without authentication - set a mock admin user
-    localStorage.removeItem("token");
-    setUser({ id: 1, email: "admin@inventory.com", full_name: "Admin User", role: "admin" });
+    // Direct login with default admin credentials
+    try {
+      const { access_token } = await api.login("admin@inventory.com", "admin123");
+      localStorage.setItem("token", access_token);
+      const me = await api.getMe();
+      setUser(me);
+    } catch (error) {
+      console.error("Direct login failed:", error);
+      // Fallback to mock user if backend is not available
+      localStorage.removeItem("token");
+      setUser({ id: 1, email: "admin@inventory.com", full_name: "Admin User", role: "admin" });
+    }
   };
 
   const logout = () => {
