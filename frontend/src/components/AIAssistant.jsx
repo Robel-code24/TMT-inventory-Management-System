@@ -26,11 +26,17 @@ export default function AIAssistant({ isOpen, onClose }) {
     setIsLoading(true);
 
     try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found. Please logout and login again.");
+      }
+      console.log("Sending chat with token:", token.substring(0, 20) + "...");
+      
       const data = await api.chat(input, messages.slice(-10));
       setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${error.message}. Please try again.` }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${error.message}. Please logout and login again to get a fresh authentication token.` }]);
     } finally {
       setIsLoading(false);
     }

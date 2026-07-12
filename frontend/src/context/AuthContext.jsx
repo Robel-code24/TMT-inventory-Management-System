@@ -38,6 +38,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", access_token);
       const me = await api.getMe();
       setUser(me);
+      console.log("Direct login successful, token:", access_token);
     } catch (error) {
       console.error("Direct login failed:", error);
       // Fallback to mock user if backend is not available
