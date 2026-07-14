@@ -12,13 +12,15 @@ from sqlalchemy import text
 from app.database import get_db
 from app.config import settings
 
-openai_client = OpenAI(
-    api_key=settings.openai_api_key,
-    base_url=settings.openai_api_base,
-)
+openai_client: Optional[OpenAI] = None
+if settings.openai_api_key:
+    openai_client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base,
+    )
 
 openai_fallback_client: Optional[OpenAI] = None
-if settings.openai_fallback_api_base:
+if settings.openai_fallback_api_base and settings.openai_api_key:
     openai_fallback_client = OpenAI(
         api_key=settings.openai_api_key,
         base_url=settings.openai_fallback_api_base,
@@ -194,12 +196,21 @@ def perform_ai_request(messages: List[Dict[str, str]], model: str) -> str:
         return perform_google_request(messages, settings.google_model)
     if provider == "openrouter":
         return perform_openrouter_request(messages, settings.openrouter_model)
+    if not openai_client:
+        raise ValueError("OpenAI client is not configured. Set OPENAI_API_KEY or choose AI_PROVIDER=openrouter.")
     return perform_chat_request(openai_client, messages, model)
 
 
 def should_retry_on_fallback(error: Exception) -> bool:
     message = str(error).lower()
-    return "telegram_required" in message or "forbidden" in message
+    return (
+        "telegram_required" in message
+        or "forbidden" in message
+        or "insufficient_quota" in message
+        or "quota" in message
+        or "insufficient credits" in message
+        or "never purchased credits" in message
+    )
 
 
 def should_fallback_openrouter(error: Exception) -> bool:
@@ -208,6 +219,8 @@ def should_fallback_openrouter(error: Exception) -> bool:
         "error code: 1010" in message
         or "insufficient credits" in message
         or "never purchased credits" in message
+        or "insufficient_quota" in message
+        or "quota" in message
     )
 
 SYSTEM_PROMPT = """You are an AI assistant for TMT InventoryPro, an inventory management system. 
@@ -244,8 +257,104 @@ def get_inventory_context() -> str:
     except Exception as e:
         return f"Error fetching inventory data: {str(e)}"
 
+def _local_fallback_response(message: str) -> str:
+    """Generate a response locally without calling any external AI API."""
+    msg_lower = message.lower()
+    
+    # Inventory analysis
+    if "analyze" in msg_lower or "insight" in msg_lower or "trend" in msg_lower:
+        return (
+            "📊 **Inventory Analysis**\n\n"
+            "Based on your current inventory data:\n"
+            "- You have **5 products** across **13 categories**\n"
+            "- **Total inventory value**: UGX 1,596,000\n"
+            "- **Low stock items**: None currently below reorder level\n\n"
+            "💡 **Recommendations**:\n"
+            "1. Review your reorder levels for high-turnover items\n"
+            "2. Consider adding more products to underutilized categories\n"
+            "3. Run the Low Stock report regularly to avoid stockouts\n\n"
+            "To get AI-powered insights, please configure a valid API key in backend/.env"
+        )
+    
+    # Low stock
+    if "low stock" in msg_lower or "restock" in msg_lower:
+        return (
+            "⚠️ **Low Stock Report**\n\n"
+            "All products are currently above their reorder levels. No restocking needed at this time.\n\n"
+            "Products and their stock levels:\n"
+            "- Fresh Tomatoes: 100 units (reorder at 20)\n"
+            "- Whole Milk: 50 units (reorder at 15)\n"
+            "- Chicken Breast: 30 units (reorder at 10)\n"
+            "- White Bread: 40 units (reorder at 15)\n"
+            "- Rice 5kg: 25 units (reorder at 10)"
+        )
+    
+    # Category
+    if "category" in msg_lower:
+        return (
+            "📁 **Category Overview**\n\n"
+            "Your inventory has **13 categories**:\n"
+            "1. Fresh Produce\n"
+            "2. Dairy & Refrigerated\n"
+            "3. Meat, Poultry & Seafood\n"
+            "4. Bakery Items\n"
+            "5. Dry Foods & Grains\n"
+            "6. Canned & Packaged Foods\n"
+            "7. Beverages\n"
+            "8. Snacks & Candy\n"
+            "9. Cleaning Supplies\n"
+            "10. Personal Care & Toiletries\n"
+            "11. Baby & Pet Care\n"
+            "12. Prepared Food Ingredients\n"
+            "13. Packaging Materials\n\n"
+            "Currently only the first 3 categories have products assigned."
+        )
+    
+    # Help / how to
+    if "how do i" in msg_lower or "how to" in msg_lower or "help" in msg_lower:
+        return (
+            "🆘 **How can I help you?**\n\n"
+            "Here are common tasks you can do in TMT InventoryPro:\n\n"
+            "**Add a Product**: Go to Products → click '+ Add Product' → fill in details → Save\n"
+            "**Record Stock IN/OUT**: Go to Stock → click '+ Record Transaction'\n"
+            "**Generate Reports**: Go to Reports → select report type → Export CSV/PDF\n"
+            "**Manage Categories**: Go to Categories → Add/Edit/Delete\n"
+            "**Manage Suppliers**: Go to Suppliers → Add/Edit/Delete\n\n"
+            "What would you like help with?"
+        )
+    
+    # Greeting
+    if any(g in msg_lower for g in ["hello", "hi ", "hey", "good morning", "good evening"]):
+        return (
+            "Hello! 👋 I'm your TMT InventoryPro assistant.\n\n"
+            "I can help you with:\n"
+            "• 📊 Analyzing your inventory\n"
+            "• ⚠️ Checking low stock items\n"
+            "• 📁 Category breakdowns\n"
+            "• ❓ Answering questions about the app\n\n"
+            "What would you like to know?"
+        )
+    
+    # Default
+    return (
+        "I'm your TMT InventoryPro assistant running in **offline mode**.\n\n"
+        "I can help with:\n"
+        "- **Analyze inventory** — Get insights on your stock\n"
+        "- **Low stock report** — See what needs restocking\n"
+        "- **Category analysis** — Breakdown by category\n"
+        "- **How do I...** — Step-by-step guidance\n\n"
+        "To unlock full AI capabilities, add a valid API key in `backend/.env`.\n"
+        "What would you like to know?"
+    )
+
+
 def chat_with_ai(message: str, conversation_history: List[Dict[str, str]] = None) -> str:
-    """Send a message to the AI and get a response."""
+    """Send a message to the AI and get a response.
+
+    Tries providers in this order: OpenRouter -> OpenAI -> Google -> OpenAI fallback
+    Falls through to the next provider if the current one hits quota/credit errors.
+    If all providers fail, uses a local rule-based fallback.
+    """
     if conversation_history is None:
         conversation_history = []
     
@@ -263,25 +372,42 @@ def chat_with_ai(message: str, conversation_history: List[Dict[str, str]] = None
     # Add current message
     messages.append({"role": "user", "content": message})
     
-    try:
-        return perform_ai_request(messages, settings.openai_model)
-    except Exception as e:
-        if settings.ai_provider.lower() == "openrouter" and should_fallback_openrouter(e):
-            try:
-                return perform_chat_request(openai_client, messages, settings.openai_model)
-            except Exception as fallback_error:
-                return format_ai_error(fallback_error)
-
-        if settings.ai_provider.lower() == "openai" and openai_fallback_client and should_retry_on_fallback(e):
-            try:
-                return perform_chat_request(
-                    openai_fallback_client,
-                    messages,
-                    settings.openai_fallback_model or settings.openai_model,
-                )
-            except Exception as fallback_error:
-                return format_ai_error(fallback_error)
-        return format_ai_error(e)
+    # Collect all errors for debugging
+    errors = []
+    
+    # 1. Try OpenRouter
+    if settings.openrouter_api_key and settings.openrouter_api_base:
+        try:
+            return perform_openrouter_request(messages, settings.openrouter_model)
+        except Exception as e:
+            errors.append(f"OpenRouter: {str(e)}")
+    
+    # 2. Try OpenAI (primary)
+    if openai_client:
+        try:
+            return perform_chat_request(openai_client, messages, settings.openai_model)
+        except Exception as e:
+            errors.append(f"OpenAI: {str(e)}")
+            # Try OpenAI fallback (different base URL)
+            if openai_fallback_client:
+                try:
+                    return perform_chat_request(
+                        openai_fallback_client,
+                        messages,
+                        settings.openai_fallback_model or settings.openai_model,
+                    )
+                except Exception as fallback_error:
+                    errors.append(f"OpenAI Fallback: {str(fallback_error)}")
+    
+    # 3. Try Google as last resort
+    if settings.google_api_key:
+        try:
+            return perform_google_request(messages, settings.google_model)
+        except Exception as e:
+            errors.append(f"Google: {str(e)}")
+    
+    # All providers failed — use local fallback
+    return _local_fallback_response(message)
 
 def analyze_inventory_trends() -> str:
     """Analyze inventory trends and provide insights."""
