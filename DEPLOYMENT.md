@@ -1,7 +1,7 @@
 # Deployment Guide
 
 This guide will help you deploy the Inventory Management System with:
-- **Backend:** Hugging Face Spaces (Free, 24/7 uptime)
+- **Backend:** Render.com (Free)
 - **Frontend:** Vercel (Free)
 
 ## Step 1: Push Code to GitHub
@@ -17,26 +17,24 @@ git branch -M main
 git push -u origin main
 ```
 
-## Step 2: Deploy Backend to Hugging Face Spaces
+## Step 2: Deploy Backend to Render.com
 
-1. Go to https://huggingface.co/spaces
-2. Click "Create new Space"
-3. Configure:
-   - **Space name:** `tmt-inventory-backend`
-   - **License:** MIT
-   - **SDK:** Docker
-   - **Hardware:** CPU Basic (free)
-4. Click "Create Space"
-5. In your Space, go to Settings → Repository
-6. Click "Connect to GitHub"
-7. Select your `inventory-management-system` repository
-8. **Important:** Set repository path to `backend/`
-9. Add environment variables in Settings:
+1. Go to https://render.com
+2. Sign up/login with GitHub
+3. Click "New +" → "Web Service"
+4. Connect your GitHub repository `inventory-management-system`
+5. Configure:
+   - **Name:** `tmt-inventory-backend`
+   - **Root Directory:** `backend`
+   - **Runtime:** Python 3
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+6. Add environment variables:
    - `DATABASE_URL`: `sqlite:///./inventory.db`
-   - `JWT_SECRET`: Generate a secure random string (use: https://generate-random.org/api-key-generator)
-10. Click "Save" and the Space will automatically build and deploy
+   - `JWT_SECRET`: Generate a secure random string
+7. Click "Deploy Web Service"
 
-Once deployed, your backend URL will be: `https://huggingface.co/spaces/Robel-code24/tmt-inventory-backend`
+Once deployed, your backend URL will be: `https://tmt-inventory-backend.onrender.com`
 
 ## Step 3: Deploy Frontend to Vercel
 
@@ -59,7 +57,7 @@ After deploying both:
 
 1. Go to your Vercel project dashboard
 2. Go to Settings → Environment Variables
-3. Update `VITE_API_URL` to your actual Hugging Face Space URL
+4. Update `VITE_API_URL` to your actual backend URL, for example `https://inventory-management-system-h6fu.onrender.com`
 4. Redeploy the frontend
 
 ## Important Notes

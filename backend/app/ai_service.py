@@ -1,11 +1,214 @@
 import os
+import json
+import urllib.request
+import urllib.error
 from openai import OpenAI
-from typing import List, Dict, Any
+try:
+    from openai import OpenAIError
+except ImportError:
+    OpenAIError = Exception
+from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 from app.database import get_db
 from app.config import settings
 
-client = OpenAI(api_key=settings.openai_api_key)
+openai_client = OpenAI(
+    api_key=settings.openai_api_key,
+    base_url=settings.openai_api_base,
+)
+
+openai_fallback_client: Optional[OpenAI] = None
+if settings.openai_fallback_api_base:
+    openai_fallback_client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_fallback_api_base,
+    )
+
+openrouter_client: Optional[OpenAI] = None
+if settings.openrouter_api_base and settings.openrouter_api_key:
+    openrouter_client = OpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_api_base,
+    )
+
+
+def build_google_prompt(messages: List[Dict[str, str]]) -> str:
+    prompt_lines = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "system":
+            prompt_lines.append(content)
+        elif role == "user":
+            prompt_lines.append(f"User: {content}")
+        elif role == "assistant":
+            prompt_lines.append(f"Assistant: {content}")
+        else:
+            prompt_lines.append(content)
+    return "\n\n".join(prompt_lines)
+
+
+def perform_google_request(messages: List[Dict[str, str]], model: str) -> str:
+    if not settings.google_api_key:
+        raise ValueError("Google API key is required for AI_PROVIDER=google.")
+
+    model_name = model
+    if not model_name.startswith("models/"):
+        model_name = f"models/{model_name}"
+
+    url = f"{settings.google_api_base}/{model_name}:generateText"
+    headers = {"Content-Type": "application/json"}
+
+    if settings.google_api_key.startswith("AIza"):
+        url = f"{url}?key={settings.google_api_key}"
+    else:
+        headers["Authorization"] = f"Bearer {settings.google_api_key}"
+
+    prompt_text = build_google_prompt(messages)
+    body = {
+        "prompt": {"text": prompt_text},
+        "temperature": 0.7,
+        "maxOutputTokens": 500,
+    }
+    request_data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=request_data,
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.load(resp)
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="ignore")
+        try:
+            payload = json.loads(error_body)
+            message = payload.get("error", {}).get("message", error_body)
+        except Exception:
+            message = error_body
+        raise Exception(f"Google Studio API error {e.code}: {message}")
+    except urllib.error.URLError as e:
+        raise Exception(f"Google Studio request failed: {e.reason}")
+
+    candidates = payload.get("candidates") or []
+    if candidates and isinstance(candidates, list):
+        return candidates[0].get("output", "")
+
+    raise Exception("Google Studio response did not return any text output.")
+
+
+def format_ai_error(error: Exception) -> str:
+    message = str(error)
+
+    if isinstance(error, OpenAIError) and hasattr(error, "response") and error.response is not None:
+        try:
+            payload = error.response.json()
+            if isinstance(payload, dict):
+                err = payload.get("error", payload)
+                if isinstance(err, dict):
+                    message = err.get("message", message)
+                    if err.get("type"):
+                        message = f"{err['type']}: {message}"
+        except Exception:
+            pass
+
+    if "telegram_required" in message.lower():
+        return (
+            "AI Error: NoraRouter rejected the request because the current route requires Telegram binding. "
+            "Please use a different NoraRouter API key/route or switch to another provider."
+        )
+
+    return f"AI Error: {message}"
+
+
+def perform_chat_request(client_obj: OpenAI, messages: List[Dict[str, str]], model: str) -> str:
+    response = client_obj.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.7,
+        max_tokens=500,
+    )
+    return response.choices[0].message.content
+
+
+def get_effective_provider() -> str:
+    provider = os.getenv("AI_PROVIDER", settings.ai_provider).lower()
+    if provider not in {"openai", "google", "openrouter"}:
+        provider = "openai"
+    if provider == "openai" and settings.google_api_key:
+        provider = "google"
+    return provider
+
+
+def perform_openrouter_request(messages: List[Dict[str, str]], model: str) -> str:
+    if not settings.openrouter_api_key or not settings.openrouter_api_base:
+        raise ValueError("OpenRouter API key and base URL are required for AI_PROVIDER=openrouter.")
+
+    base_url = settings.openrouter_api_base.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.openrouter_api_key}",
+    }
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 500,
+    }
+
+    request_data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=request_data,
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.load(resp)
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="ignore")
+        try:
+            payload = json.loads(error_body)
+            message = payload.get("error", {}).get("message", error_body)
+        except Exception:
+            message = error_body
+        raise Exception(f"OpenRouter API error {e.code}: {message}")
+    except urllib.error.URLError as e:
+        raise Exception(f"OpenRouter request failed: {e.reason}")
+
+    choices = payload.get("choices") or []
+    if choices and isinstance(choices, list):
+        return choices[0].get("message", {}).get("content", "")
+
+    raise Exception("OpenRouter response did not return any text output.")
+
+
+def perform_ai_request(messages: List[Dict[str, str]], model: str) -> str:
+    provider = get_effective_provider()
+    if provider == "google":
+        return perform_google_request(messages, settings.google_model)
+    if provider == "openrouter":
+        return perform_openrouter_request(messages, settings.openrouter_model)
+    return perform_chat_request(openai_client, messages, model)
+
+
+def should_retry_on_fallback(error: Exception) -> bool:
+    message = str(error).lower()
+    return "telegram_required" in message or "forbidden" in message
+
+
+def should_fallback_openrouter(error: Exception) -> bool:
+    message = str(error).lower()
+    return (
+        "error code: 1010" in message
+        or "insufficient credits" in message
+        or "never purchased credits" in message
+    )
 
 SYSTEM_PROMPT = """You are an AI assistant for TMT InventoryPro, an inventory management system. 
 You help users with:
@@ -61,15 +264,24 @@ def chat_with_ai(message: str, conversation_history: List[Dict[str, str]] = None
     messages.append({"role": "user", "content": message})
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=500
-        )
-        return response.choices[0].message.content
+        return perform_ai_request(messages, settings.openai_model)
     except Exception as e:
-        return f"AI Error: {str(e)}"
+        if settings.ai_provider.lower() == "openrouter" and should_fallback_openrouter(e):
+            try:
+                return perform_chat_request(openai_client, messages, settings.openai_model)
+            except Exception as fallback_error:
+                return format_ai_error(fallback_error)
+
+        if settings.ai_provider.lower() == "openai" and openai_fallback_client and should_retry_on_fallback(e):
+            try:
+                return perform_chat_request(
+                    openai_fallback_client,
+                    messages,
+                    settings.openai_fallback_model or settings.openai_model,
+                )
+            except Exception as fallback_error:
+                return format_ai_error(fallback_error)
+        return format_ai_error(e)
 
 def analyze_inventory_trends() -> str:
     """Analyze inventory trends and provide insights."""

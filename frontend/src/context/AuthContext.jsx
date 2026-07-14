@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 
 const AuthContext = createContext(null);
 
@@ -24,31 +24,30 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const { access_token } = await api.login(email, password);
-    localStorage.setItem("token", access_token);
-    const me = await api.getMe();
-    setUser(me);
-    return me;
-  };
-
-  const loginDirect = async () => {
-    // Direct login with default admin credentials
     try {
-      const { access_token } = await api.login("admin@inventory.com", "admin123");
+      const { access_token } = await api.login(email, password);
       localStorage.setItem("token", access_token);
       const me = await api.getMe();
       setUser(me);
-      console.log("Direct login successful, token:", access_token);
+      return me;
     } catch (error) {
-      console.error("Direct login failed:", error);
-      // Fallback to mock user if backend is not available
-      // Set a dummy token for testing purposes
-      const dummyToken = "dummy-token-for-testing-" + Date.now();
-      localStorage.setItem("token", dummyToken);
-      setUser({ id: 1, email: "admin@inventory.com", full_name: "Admin User", role: "admin" });
-      console.log("Using mock user with dummy token");
+      localStorage.removeItem("token");
+      const isBackendUnavailable = error instanceof ApiError && error.status === 0;
+      if (isBackendUnavailable && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+        const mockUser = {
+          id: 1,
+          email: "admin@inventory.com",
+          full_name: "Admin User",
+          role: "admin",
+        };
+        setUser(mockUser);
+        return mockUser;
+      }
+      throw error;
     }
   };
+
+  const loginDirect = async () => login("admin@inventory.com", "admin123");
 
   const logout = () => {
     localStorage.removeItem("token");

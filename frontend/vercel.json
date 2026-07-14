@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://your-huggingface-space.hf.space/api/:path*"
+      "destination": "https://inventory-management-system-h6fu.onrender.com/api/:path*"
     }
   ]
 }

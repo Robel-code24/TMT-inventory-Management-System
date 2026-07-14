@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = (import.meta.env.VITE_API_URL || "https://inventory-management-system-h6fu.onrender.com").replace(/\/$/, "");
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -17,7 +17,9 @@ async function request(path, options = {}) {
 
   let response;
   try {
-    response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    const base = API_URL || "";
+    const prefix = path.startsWith("/") ? "" : "/";
+    response = await fetch(`${base}${path}`, { ...options, headers });
   } catch {
     throw new ApiError(
       "Cannot connect to server. Make sure the backend is running on http://localhost:8000",
@@ -30,6 +32,9 @@ async function request(path, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+    }
     const detail = data.detail;
     const message = Array.isArray(detail)
       ? detail.map((e) => e.msg).join(", ")

@@ -1,13 +1,19 @@
 import { Link, Navigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const { loginDirect, user } = useAuth();
+  const [error, setError] = useState(null);
 
   const handleLogin = async () => {
-    // Clear any existing token before login
+    setError(null);
     localStorage.removeItem("token");
-    await loginDirect();
+    try {
+      await loginDirect();
+    } catch (err) {
+      setError(err.message || "Login failed. Please make sure the backend is running.");
+    }
   };
 
   if (user) return <Navigate to="/dashboard" replace />;
@@ -58,6 +64,11 @@ export default function Login() {
           <h2 className="text-2xl font-bold text-navy">Sign in</h2>
           <p className="mt-2 text-sm text-slate-500">Click the button below to access the system</p>
 
+          {error && (
+            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
           <div className="mt-8">
             <button
               onClick={handleLogin}
