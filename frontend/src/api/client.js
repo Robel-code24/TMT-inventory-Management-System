@@ -1,4 +1,5 @@
-const API_URL = (import.meta.env.VITE_API_URL || "https://inventory-management-system-h6fu.onrender.com").replace(/\/$/, "");
+const defaultApiUrl = import.meta.env.DEV ? "" : "https://inventory-management-system-h6fu.onrender.com";
+const API_URL = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/$/, "");
 
 class ApiError extends Error {
   constructor(message, status) {
